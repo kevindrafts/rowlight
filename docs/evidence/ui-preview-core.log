@@ -1,0 +1,28 @@
+warning: /Users/mordecai/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/mordecai/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--1AB21518FC5DEDBE.txt
+Build of product 'TableCoreChecks' complete! (0.08s)
+PASS harness
+PASS testQuotedAndMultiline
+PASS testBOMEmptyAndIdentifiers
+PASS testEmptyAndBlankRecords
+PASS testDetectionAndOverride
+PASS testMalformed
+PASS testEncoding
+PASS testCancellation
+PASS testSourceUnchanged
+PASS irregular and literal records
+PASS resource caps
+PASS real file SHA256 invariance and file limits
+PASS UTF8 scalar boundaries and delayed cancellation
+PASS bounded LRU cache
+PASS header selection keyboard and literal copy
+PASS find wrap multiline and cancellation
+PASS cancel and stale completion protection
+PASS local file opening policy
+PASS header changes clear exact cell selection
+PASS gutter labels preserve source and search coordinates
+PASS selection invalidates only exact old and new cells
+21/21 checks passed

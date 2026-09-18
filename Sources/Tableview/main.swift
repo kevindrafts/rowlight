@@ -15,14 +15,108 @@ final class FileDropView: NSView {
     }
 }
 
+/// A reusable cell owns its selection drawing; NSTableRowView never draws selection.
+@MainActor
+final class GridCell: NSTextField {
+    var selectCell: (() -> Void)?
+    override func accessibilityPerformPress() -> Bool {
+        guard let selectCell else { return false }
+        selectCell(); return true
+    }
+    var isCellSelected = false { didSet { needsDisplay = true; setAccessibilitySelected(isCellSelected) } }
+    override func draw(_ dirtyRect: NSRect) {
+        if isCellSelected {
+            NSColor.systemTeal.withAlphaComponent(0.16).setFill()
+            bounds.fill()
+        }
+        super.draw(dirtyRect)
+        if isCellSelected {
+            let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 2, yRadius: 2)
+            NSColor.keyboardFocusIndicatorColor.setStroke()
+            outline.lineWidth = 2
+            outline.stroke()
+            if window?.firstResponder === enclosingScrollView?.documentView {
+                NSGraphicsContext.saveGraphicsState()
+                NSFocusRingPlacement.only.set()
+                NSBezierPath(rect: bounds.insetBy(dx: 3, dy: 3)).fill()
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+    }
+}
+
+/// Native scroll-view ruler: fixed horizontally, painted only for visible rows.
+@MainActor
+final class RowNumberRuler: NSRulerView {
+    weak var table: NSTableView?
+    var rowNumber: (Int) -> Int? = { _ in nil }
+    init(scrollView: NSScrollView, table: NSTableView) {
+        self.table = table
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        ruleThickness = 52
+        clientView = table
+        setAccessibilityElement(false) // Each accessible data cell includes its row number.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+    }
+    required init(coder: NSCoder) { fatalError("Not used") }
+    deinit { NotificationCenter.default.removeObserver(self) }
+    @objc private func scrolled() { needsDisplay = true }
+    override func scrollWheel(with event: NSEvent) { scrollView?.scrollWheel(with: event) }
+    func labelRect(for row: Int) -> NSRect {
+        guard let table else { return .zero }
+        let rect = convert(table.rect(ofRow: row), from: table)
+        return NSRect(x: 0, y: rect.minY, width: bounds.width, height: rect.height)
+    }
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        NSColor.controlBackgroundColor.setFill(); bounds.fill()
+        guard let table, let scrollView else { return }
+        // AppKit overlays the header and ruler using clip-view content insets.
+        var dataBounds = scrollView.contentView.bounds
+        let insets = scrollView.contentView.contentInsets
+        dataBounds.origin.y += insets.top
+        dataBounds.size.height -= insets.top + insets.bottom
+        let viewport = convert(dataBounds, from: scrollView.contentView)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: viewport.intersection(bounds)).addClip()
+        let visible = table.rows(in: table.visibleRect)
+        if visible.location != NSNotFound {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+            for row in visible.location..<NSMaxRange(visible) {
+                guard let number = rowNumber(row) else { continue }
+                let cell = labelRect(for: row)
+                let label = String(number) as NSString
+                let size = label.size(withAttributes: attributes)
+                label.draw(at: NSPoint(x: bounds.maxX - size.width - 9, y: cell.midY - size.height / 2), withAttributes: attributes)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        if let header = table.headerView {
+            let headerRect = convert(header.bounds, from: header)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor
+            ]
+            let label = "#" as NSString
+            let size = label.size(withAttributes: attributes)
+            label.draw(at: NSPoint(x: bounds.maxX - size.width - 9, y: headerRect.midY - size.height / 2), withAttributes: attributes)
+        }
+        NSColor.separatorColor.setFill()
+        NSRect(x: bounds.maxX - 1, y: bounds.minY, width: 1, height: bounds.height).fill()
+    }
+}
+
 @MainActor
 final class CSVTable: NSTableView {
     weak var owner: ViewerWindow?
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point), column = column(at: point)
-        super.mouseDown(with: event)
+        window?.makeFirstResponder(self)
         if row >= 0 && column >= 0 { owner?.select(row: row, column: column) }
+        else { owner?.clearSelection() }
     }
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
@@ -34,6 +128,12 @@ final class CSVTable: NSTableView {
         case 53: owner?.cancelWork(nil)
         default: super.keyDown(with: event)
         }
+    }
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder(); owner?.refreshSelectedCell(); return result
+    }
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder(); owner?.refreshSelectedCell(); return result
     }
     @objc func copy(_ sender: Any?) { owner?.copyValue(sender) }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -50,6 +150,9 @@ final class CSVTable: NSTableView {
 @MainActor
 final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSSearchFieldDelegate {
     private let table = CSVTable()
+    private let scroll = NSScrollView()
+    private var gutter: RowNumberRuler!
+    private let inspectorLabel = NSTextField(labelWithString: "No cell selected")
     private let status = NSTextField(labelWithString: "Open or drop a CSV file to begin.")
     private let inspector = NSTextView()
     private let search = NSSearchField()
@@ -83,28 +186,42 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         search.sendsWholeSearchString = true
         let next = NSButton(title: "Find Next", target: self, action: #selector(findNext(_:)))
         cancel.target = self; cancel.action = #selector(cancelWork(_:)); cancel.isEnabled = false
-        let bar = NSStackView(views: [open, header, delimiter, search, next, cancel])
+        let brand = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Tableview")!)
+        brand.contentTintColor = .systemTeal
+        open.bezelStyle = .rounded; next.bezelStyle = .rounded; cancel.bezelStyle = .rounded
+        let bar = NSStackView(views: [brand, open, header, delimiter, search, next, cancel])
         bar.orientation = .horizontal; bar.spacing = 10
-        let scroll = NSScrollView()
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = false
-        scroll.borderType = .bezelBorder
+        scroll.borderType = .lineBorder
         table.owner = self; table.dataSource = self; table.delegate = self
         table.usesAlternatingRowBackgroundColors = true
+        table.selectionHighlightStyle = .none
+        table.focusRingType = .none
+        table.gridColor = .separatorColor
+        table.setAccessibilityLabel("CSV data grid")
         table.rowHeight = 25; table.intercellSpacing = NSSize(width: 1, height: 1)
         table.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
         table.columnAutoresizingStyle = .noColumnAutoresizing
         table.allowsColumnReordering = false; table.allowsMultipleSelection = false
         table.registerForDraggedTypes([.fileURL])
         scroll.documentView = table
-        let inspectorLabel = NSTextField(labelWithString: "Selected cell — full literal value (⌘C to copy from grid)")
+        gutter = RowNumberRuler(scrollView: scroll, table: table)
+        gutter.rowNumber = { [weak self] row in self?.model?.rowNumber(at: row) }
+        scroll.verticalRulerView = gutter
+        scroll.hasVerticalRuler = true; scroll.hasHorizontalRuler = false; scroll.rulersVisible = true
+        inspectorLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        inspectorLabel.textColor = .secondaryLabelColor
         let inspectorScroll = NSScrollView()
-        inspectorScroll.hasVerticalScroller = true; inspectorScroll.borderType = .bezelBorder
+        inspectorScroll.hasVerticalScroller = true; inspectorScroll.borderType = .lineBorder
         inspector.isEditable = false; inspector.isSelectable = true; inspector.isRichText = false
+        inspector.textColor = .textColor; inspector.backgroundColor = .textBackgroundColor
+        inspector.setAccessibilityLabel("Selected cell full literal value")
         inspector.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         inspector.textContainerInset = NSSize(width: 8, height: 8)
         inspector.autoresizingMask = [.width]; inspector.isVerticallyResizable = true
         inspector.textContainer?.widthTracksTextView = true
         inspectorScroll.documentView = inspector
+        status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingMiddle
         for view in [bar, scroll, inspectorLabel, inspectorScroll, status] {
             view.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(view)
@@ -120,6 +237,66 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         if let url { load(url) }
     }
     required init?(coder: NSCoder) { fatalError("Not used") }
+
+    func runUISelfChecks() throws {
+        func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
+            guard condition() else {
+                throw NSError(domain: "Tableview.UI", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+            }
+        }
+        try check(table.selectionHighlightStyle == .none, "Whole-row selection must be disabled")
+        try check(table.numberOfRows == 0 && inspector.string.isEmpty, "Empty window selection")
+        let records = (0..<120).map { row in (0..<16).map { "r\(row)c\($0)" }.joined(separator: ",") }.joined(separator: "\n")
+        let document = try CSVDocument(data: Data(records.utf8))
+        model = GridModel(document: document); cache = RowCache(document: document)
+        rebuildColumns()
+        window?.contentView?.layoutSubtreeIfNeeded(); scroll.tile(); table.layoutSubtreeIfNeeded()
+        try check(table.numberOfColumns == 16 && table.numberOfRows == 119, "Gutter must not be a data column")
+        try check(scroll.verticalRulerView === gutter && scroll.rulersVisible, "Fixed ruler installed")
+        select(row: 0, column: 0)
+        let first = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as! GridCell
+        move(rows: 0, columns: 1)
+        let second = table.view(atColumn: 1, row: 0, makeIfNecessary: true) as! GridCell
+        try check(!first.isCellSelected && second.isCellSelected, "Exact cell highlight follows keyboard")
+        try check(second.isAccessibilitySelected(), "Selected cell accessibility")
+        try check(table.selectedRow == -1 && inspector.string == "r1c1", "No native row selection; inspector follows cell")
+        try check(table.view(atColumn: 0, row: 0, makeIfNecessary: false) === first, "Navigation keeps existing cell views")
+        try check(first.accessibilityPerformPress(), "Accessible cell press selects the data cell")
+        try check(model?.selection == Cell(row: 0, column: 0), "Accessible cell press coordinates")
+        let rulerX = gutter.convert(gutter.bounds, to: nil).minX
+        let beforeX = table.convert(table.rect(ofColumn: 0), to: nil).minX
+        scroll.contentView.scroll(to: NSPoint(x: 200, y: 260))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        table.layoutSubtreeIfNeeded()
+        try check(gutter.convert(gutter.bounds, to: nil).minX == rulerX, "Horizontal scroll moved gutter")
+        try check(table.convert(table.rect(ofColumn: 0), to: nil).minX < beforeX, "Grid did not scroll horizontally")
+        let visibleRow = table.rows(in: table.visibleRect).location + 1
+        let cell = table.view(atColumn: 2, row: visibleRow, makeIfNecessary: true)!
+        let label = gutter.convert(gutter.labelRect(for: visibleRow), to: nil)
+        try check(abs(label.midY - cell.convert(cell.bounds, to: nil).midY) <= 1, "Gutter/data row vertical alignment")
+        let viewport = scroll.contentView.convert(scroll.contentView.bounds, to: nil)
+        let columnHeader = table.headerView!.convert(table.headerView!.bounds, to: nil)
+        try check(abs(viewport.maxY - scroll.contentView.contentInsets.top - columnHeader.minY) <= 1, "Header/data viewport alignment: viewport \(viewport), header \(columnHeader)")
+        clearSelection()
+        try check(model?.selection == nil && inspector.string.isEmpty, "Clear selection and inspector")
+        header.state = .off; optionsChanged(header)
+        try check(table.numberOfRows == 120 && model?.rowNumber(at: 0) == 1, "Header toggle row numbering")
+        move(rows: 1, columns: 1)
+        try check(model?.selection == Cell(row: 0, column: 0) && inspector.string == "r0c0", "Navigation from no selection targets first data cell")
+        model = GridModel(document: try CSVDocument(data: Data("a,b,c\n001\n\n2,y,z".utf8)))
+        cache = RowCache(document: model!.document); rebuildColumns()
+        select(row: 1, column: 2)
+        try check(inspector.string.isEmpty && model?.rowNumber(at: 1) == 2, "Blank/ragged cell remains selectable")
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            window?.appearance = NSAppearance(named: name)
+            window?.contentView?.layoutSubtreeIfNeeded()
+            // Exercise native drawing in both appearances without claiming visual acceptance.
+            let bitmap = scroll.bitmapImageRepForCachingDisplay(in: scroll.bounds)
+            try check(bitmap != nil, "Appearance drawing surface unavailable")
+            scroll.cacheDisplay(in: scroll.bounds, to: bitmap!)
+        }
+        print("PASS cell selection, accessibility state, inspector, fixed gutter, scroll/header alignment, header toggle, ragged rows, light/dark drawing")
+    }
 
     func load(_ url: URL) {
         self.url = url; sourceTitle = url.lastPathComponent
@@ -172,6 +349,9 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
             }
         }
         table.reloadData()
+        gutter.ruleThickness = max(52, CGFloat(String(model?.rowCount ?? 0).count) * 8 + 20)
+        gutter.needsDisplay = true
+        inspectorLabel.stringValue = "No cell selected"
     }
     private func showDimensions() {
         guard let model else { return }
@@ -181,7 +361,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let model, let tableColumn, let column = Int(tableColumn.identifier.rawValue) else { return nil }
         let id = NSUserInterfaceItemIdentifier("Cell")
-        let field = (tableView.makeView(withIdentifier: id, owner: self) as? NSTextField) ?? NSTextField(labelWithString: "")
+        let field = (tableView.makeView(withIdentifier: id, owner: self) as? GridCell) ?? GridCell(labelWithString: "")
         field.identifier = id; field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         field.lineBreakMode = .byTruncatingTail; field.maximumNumberOfLines = 1
         do {
@@ -190,24 +370,44 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
             field.stringValue = String(value.prefix(512)).replacingOccurrences(of: "\r", with: "⏎").replacingOccurrences(of: "\n", with: "⏎")
             field.toolTip = "Record \(model.sourceRow(row) + 1), column \(column + 1). Select for full value."
         } catch { field.stringValue = "Error"; status.stringValue = String(describing: error) }
-        field.drawsBackground = model.selection == Cell(row: row, column: column)
-        field.backgroundColor = .selectedContentBackgroundColor
-        field.textColor = field.drawsBackground ? .white : .labelColor
+        field.drawsBackground = false
+        field.textColor = .labelColor
+        field.isCellSelected = model.selection == Cell(row: row, column: column)
+        field.selectCell = { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self.table)
+            self.select(row: row, column: column)
+        }
+        field.setAccessibilityHelp("Press to select this cell. Use arrow keys to navigate and Command-C to copy its full literal value.")
+        field.setAccessibilityLabel("Row \(row + 1), column \(column + 1), \(tableColumn.title)")
         return field
     }
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        if table.selectedRow >= 0 { select(row: table.selectedRow, column: model?.selection?.column ?? 0) }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
+    private func refreshCells(_ cells: [Cell]) {
+        for cell in cells {
+            guard cell.row >= 0, cell.row < table.numberOfRows,
+                  cell.column >= 0, cell.column < table.numberOfColumns else { continue }
+            // Do not instantiate offscreen cells or reload rows on keyboard navigation.
+            if let view = table.view(atColumn: cell.column, row: cell.row, makeIfNecessary: false) as? GridCell {
+                view.isCellSelected = model?.selection == cell
+            }
+        }
+    }
+    func refreshSelectedCell() { refreshCells([model?.selection].compactMap { $0 }) }
+    func clearSelection() {
+        let previous = model?.selection
+        model?.selection = nil
+        refreshCells(model?.selectionChanges(from: previous) ?? [])
+        inspector.string = ""; inspectorLabel.stringValue = "No cell selected"
     }
     func select(row: Int, column: Int) {
         guard model != nil else { return }
         let old = model?.selection
         model?.select(row: row, column: column)
-        guard let selected = model?.selection else { return }
-        if table.selectedRow != selected.row { table.selectRowIndexes(IndexSet(integer: selected.row), byExtendingSelection: false) }
-        var rows = IndexSet(integer: selected.row)
-        if let old, old.row < table.numberOfRows { rows.insert(old.row) }
-        table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+        refreshCells(model?.selectionChanges(from: old) ?? [])
+        guard let selected = model?.selection else { clearSelection(); return }
         table.scrollRowToVisible(selected.row); table.scrollColumnToVisible(selected.column)
+        inspectorLabel.stringValue = "Row \(selected.row + 1) · Column \(selected.column + 1) — full literal value (⌘C from grid)"
         do { inspector.string = try model?.value() ?? "" }
         catch { status.stringValue = String(describing: error) }
     }
@@ -254,7 +454,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         if sender as? NSPopUpButton === delimiter {
             if let url { load(url) }
         } else {
-            model?.hasHeader = header.state == .on; model?.selection = nil
+            model?.hasHeader = header.state == .on
             rebuildColumns(); inspector.string = ""; showDimensions()
             cancel.isEnabled = loading
         }
@@ -327,4 +527,14 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
+if CommandLine.arguments.contains("--ui-self-check") {
+    do {
+        try ViewerWindow().runUISelfChecks()
+        print("PASS AppKit UI self-checks")
+        exit(0)
+    } catch {
+        print("FAIL AppKit UI self-checks: \(error.localizedDescription)")
+        exit(1)
+    }
+}
 app.run()

@@ -1,0 +1,13 @@
+warning: /Users/mordecai/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/mordecai/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+[0/1] Planning build
+Building for production...
+[0/5] Write sources
+[1/5] Write swift-version--1AB21518FC5DEDBE.txt
+[3/4] Compiling Tableview main.swift
+[3/5] Write Objects.LinkFileList
+[4/5] Linking Tableview
+Build complete! (1.77s)
+dist/Tableview.app: replacing existing signature
+PASS bundle metadata, CSV Viewer registration, arm64 executable, signature
+Built dist/Tableview.app

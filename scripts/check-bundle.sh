@@ -7,6 +7,8 @@ root = 'dist/Tableview.app/Contents'
 with open(root + '/Info.plist', 'rb') as f:
     p = plistlib.load(f)
 assert p['CFBundleExecutable'] == 'Tableview'
+assert p['CFBundleShortVersionString'] == '0.1.1'
+assert p['CFBundleVersion'] == '2'
 assert p['CFBundlePackageType'] == 'APPL'
 assert p['LSMinimumSystemVersion'] == '13.0'
 doc = p['CFBundleDocumentTypes'][0]

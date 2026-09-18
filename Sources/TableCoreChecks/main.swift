@@ -170,6 +170,70 @@ checks.append(("local file opening policy", {
     try rejects { try OpenOptions.validate(URL(fileURLWithPath: "/tmp/example.XLSX")) }
     try rejects { try OpenOptions.validate(URL(fileURLWithPath: "/tmp/example.xls")) }
 }))
+checks.append(("header changes clear exact cell selection", {
+    var grid = GridModel(document: try parse("id,note\n001,value"))
+    grid.select(row: 0, column: 1)
+    grid.hasHeader = true
+    try equal(grid.selection, Cell(row: 0, column: 1))
+    grid.hasHeader = false
+    try equal(grid.selection, nil)
+    try equal(grid.value(), "")
+    grid.move(rows: 0, columns: 1)
+    try equal(grid.selection, Cell(row: 0, column: 0))
+    try equal(grid.value(), "id")
+    grid.hasHeader = true
+    try equal(grid.selection, nil)
+}))
+checks.append(("gutter labels preserve source and search coordinates", {
+    let document = try parse("id,note,extra\n001,raw\n\n2,last,tail")
+    var grid = GridModel(document: document)
+    try equal(grid.rowNumber(at: -1), nil)
+    try equal(grid.rowNumber(at: 0), 1)
+    try equal(grid.rowNumber(at: 2), 3)
+    try equal(grid.rowNumber(at: 3), nil)
+    grid.select(row: 0, column: 0)
+    try equal(grid.value(), "001")
+    grid.select(row: 1, column: 2)
+    try equal(grid.value(), "")
+    try equal(grid.rowNumber(at: 1), 2)
+    let match = try document.find("tail", firstRow: grid.sourceRow(0))!
+    grid.select(row: match.row - grid.sourceRow(0), column: match.column)
+    try equal(grid.selection, Cell(row: 2, column: 2))
+    try equal(grid.value(), "tail")
+    grid.hasHeader = false
+    try equal(grid.rowNumber(at: 0), 1)
+    try equal(grid.rowNumber(at: 3), 4)
+    grid.select(row: 0, column: 0)
+    try equal(grid.value(), "id")
+    let empty = GridModel(document: try parse(""))
+    try equal(empty.rowNumber(at: 0), nil)
+    var headerOnly = GridModel(document: try parse("id,note"))
+    try equal(headerOnly.rowNumber(at: 0), nil)
+    headerOnly.move(rows: 0, columns: 1)
+    try equal(headerOnly.selection, nil)
+    headerOnly.hasHeader = false
+    try equal(headerOnly.rowNumber(at: 0), 1)
+}))
+checks.append(("selection invalidates only exact old and new cells", {
+    var grid = GridModel(document: try parse("a,b,c\n001,x\n2,y,z"))
+    try equal(grid.selectionChanges(from: nil), [])
+    grid.move(rows: 0, columns: 1)
+    let first = grid.selection!
+    try equal(grid.selectionChanges(from: nil), [first])
+    grid.move(rows: 0, columns: 1)
+    let second = grid.selection!
+    try equal(grid.selectionChanges(from: first), [first, second])
+    try equal(grid.value(), "x")
+    grid.move(rows: 1, columns: 1)
+    let last = grid.selection!
+    try equal(grid.selectionChanges(from: second), [second, last])
+    try equal(grid.value(), "z")
+    grid.move(rows: 1, columns: 1)
+    try equal(grid.selectionChanges(from: last), [])
+    grid.selection = nil
+    try equal(grid.selectionChanges(from: last), [last])
+    try equal(grid.value(), "")
+}))
 var failures = 0
 for (name, check) in checks {
     do { try check(); print("PASS \(name)") }

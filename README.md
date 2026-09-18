@@ -1,11 +1,12 @@
 # Tableview
 
-A native, read-only CSV viewer for Apple Silicon Macs (macOS 13+). Milestone 1 implements CSV; XLSX, editing, and AI are not implemented.
+Preview **0.1.1** (build 2). A native, read-only CSV viewer for Apple Silicon Macs (macOS 13+). Milestone 1 implements CSV; XLSX, editing, and AI are not implemented.
 
 Build and check with the installed Swift Command Line Tools:
 
 ```sh
 scripts/swift-local.sh run TableCoreChecks
+scripts/swift-local.sh run Tableview --ui-self-check
 scripts/swift-local.sh build -c release
 scripts/build-app.sh
 open dist/Tableview.app
@@ -15,7 +16,7 @@ open -a "$PWD/dist/Tableview.app" /path/to/example.csv
 
 `scripts/swift-local.sh` supplies all repository-local cache/TMPDIR flags and `--disable-sandbox` needed in this environment. No packages, framework downloads, or full Xcode installation are required. The build produces an ad-hoc signed local `dist/Tableview.app`, with CSV/TSV Viewer registration at Alternate rank. It does not install the app or change default associations. It is not notarized for distribution.
 
-Use **Open… / ⌘O**, drop local files onto a window, or use Finder’s **Open With** to open files in separate windows. Drag column dividers to resize; scroll vertically and horizontally. Click a cell and use arrow keys or Tab/Shift-Tab to move. **⌘C** from the grid copies the selected cell’s complete literal value. The selectable inspector shows the full value, including newlines. Copy covers one cell; rectangular/multiple-cell selection is outside this milestone.
+Use **Open… / ⌘O**, drop local files onto a window, or use Finder’s **Open With** to open files in separate windows. Drag column dividers to resize; scroll vertically and horizontally. A fixed left gutter numbers displayed data rows from 1 and stays visible while scrolling horizontally. Header mode restarts numbering at the first data record; the gutter is never a data column. Click a cell and use arrow keys or Tab/Shift-Tab to move. Only the selected cell is highlighted, with a native focus indicator; its row/column appears above the inspector. Click empty grid space to clear selection. Restrained teal accents and semantic system colors support light and dark appearances. **⌘C** from the grid copies the selected cell’s complete literal value. The selectable inspector shows the full value, including newlines. Copy covers one cell; rectangular/multiple-cell selection is outside this milestone.
 
 **⌘F** focuses Find. Return, **Find Next**, or **⌘G** performs a case-insensitive literal substring search and wraps. The header is excluded when **First record is header** is enabled. Cancel stops loading/search; changing options or closing a window invalidates pending results. Changing the delimiter reloads the file. Header mode defaults on and can be disabled for headerless files.
 

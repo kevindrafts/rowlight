@@ -1,0 +1,14 @@
+warning: /Users/mordecai/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/mordecai/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--1AB21518FC5DEDBE.txt
+[1/4] Write sources
+[3/6] Compiling Tableview main.swift
+[4/6] Emitting module Tableview
+[4/7] Write Objects.LinkFileList
+[5/7] Linking Tableview
+[6/7] Applying Tableview
+Build of product 'Tableview' complete! (0.89s)
+PASS cell selection, accessibility state, inspector, fixed gutter, scroll/header alignment, header toggle, ragged rows, light/dark drawing
+PASS AppKit UI self-checks

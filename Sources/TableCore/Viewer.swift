@@ -38,11 +38,22 @@ public final class RowCache {
 
 public struct GridModel {
     public let document: CSVDocument
-    public var hasHeader = true
+    public var hasHeader = true {
+        didSet { if hasHeader != oldValue { selection = nil } }
+    }
     public var selection: Cell?
     public init(document: CSVDocument) { self.document = document }
     public var rowCount: Int { max(0, document.rowCount - (hasHeader ? 1 : 0)) }
     public func sourceRow(_ row: Int) -> Int { row + (hasHeader ? 1 : 0) }
+    /// Display-only gutter label; never a field in the document.
+    public func rowNumber(at row: Int) -> Int? {
+        (0..<rowCount).contains(row) ? row + 1 : nil
+    }
+    /// Cells whose selection presentation changed, independent of table width.
+    public func selectionChanges(from previous: Cell?) -> [Cell] {
+        guard previous != selection else { return [] }
+        return [previous, selection].compactMap { $0 }
+    }
     public func title(_ column: Int) throws -> String {
         if hasHeader && document.rowCount > 0 {
             let fields = try document.row(0)

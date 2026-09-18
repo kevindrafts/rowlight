@@ -59,3 +59,19 @@ Reviewed the source/build-script diff once. Fixed empty-window drop coverage by 
 Final outcomes: `swift run TableCoreChecks` (with the documented flags) passed 18/18; `swift build -c release`, `scripts/build-app.sh`, debug build, benchmark contract, and both actual fixture checks passed. Logs: [checks](evidence/checks-final.log), [release](evidence/release-final.log), [bundle](evidence/bundle-final.log), [benchmark contract](evidence/bench-contract-final.log), [fixture checks](evidence/fixtures-final.log).
 
 The final local commit attempt failed: Git could not create `.git/index.lock` because the sandbox grants only read access to `.git`. No commit was created; implementation and artifacts remain available in the workspace.
+
+## 0.1.1 bounded UI preview — 2026-09-18
+
+Test-first slices used the existing executable runner:
+
+- Header-toggle selection check: **18/19** (selected cell persisted incorrectly), then **19/19** after clearing selection only when header mode changes.
+- Gutter mapping and exact-cell invalidation checks against minimal stubs: **19/21**, then **21/21**. Covers numbering boundaries, header-only/empty/blank/ragged records, literal values, search source coordinates, navigation from no selection, and old/new selection changes independent of column count.
+- AppKit `--ui-self-check`: failed on native whole-row highlighting before UI implementation; passed after cell-only selection. Expanded geometry checks caught the native clip-view header inset; gutter painting now clips below that inset. Debug and release self-checks pass. They also exercise actual reusable cell state, accessible selected state, inspector updates, horizontal gutter stability, vertical alignment, header toggle, blank/ragged selection, and drawing in Aqua/Dark Aqua. These are in-process AppKit checks, not event automation or screenshot/VoiceOver acceptance.
+
+Executed `scripts/swift-local.sh run TableCoreChecks`, `scripts/swift-local.sh run Tableview --ui-self-check`, release variant of that command, `scripts/build-app.sh`, `scripts/check-bundle.sh`, debug TableBench build, `scripts/check-bench.sh`, release benchmarks on the existing 10/100 MB fixtures, and `python3 scripts/check-fixture-results.py`. All passed. Bundle version checks now require 0.1.1 / build 2. Updated benchmark JSON records the actual single-run measurements; no AppKit painting performance is inferred from core benchmarks.
+
+Logs: [core](evidence/ui-preview-core.log), [AppKit](evidence/ui-preview-appkit.log), [build](evidence/ui-preview-build.log). Direct bundled `--ui-self-check` execution exited **134 without output**, including with repository-local TMPDIR. The same release executable in `.build/arm64-apple-macosx/release` passed. No crash report was available; system log access is blocked by sandbox. This remains a parent bundle-launch verification item, not a claimed success.
+
+Parent QA: launch `dist/Tableview.app`, verify light/dark and increased-contrast appearance, focused/inactive exact-cell indicator without a row stripe, VoiceOver navigation/selection, gutter alignment during vertical/horizontal scrolling and resizing, large-file responsiveness, raw copy/find coordinates, header toggle and no-selection inspector state. Screenshots and GUI acceptance remain with the parent. No global settings/defaults were changed, no commit or publishing attempted, and existing `BUILD_RESULT.md` was preserved.
+
+The single preview diff review identified an accessibility action gap after removing native row selection. A cell-press self-check failed, then passed after adding an accessible press action that selects/focuses the exact data cell. AppKit checks and the app build/bundle checks were rerun after this fix. Actual VoiceOver interaction still requires parent QA.

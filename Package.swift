@@ -1,0 +1,3 @@
+// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "Tableview", platforms: [.macOS(.v13)], products: [.library(name: "TableCore", targets: ["TableCore"]), .executable(name: "Tableview", targets: ["Tableview"]), .executable(name: "TableBench", targets: ["TableBench"]), .executable(name: "TableCoreChecks", targets: ["TableCoreChecks"])], targets: [.target(name: "TableCore"), .executableTarget(name: "Tableview", dependencies: ["TableCore"]), .executableTarget(name: "TableBench", dependencies: ["TableCore"]), .executableTarget(name: "TableCoreChecks", dependencies: ["TableCore"])])

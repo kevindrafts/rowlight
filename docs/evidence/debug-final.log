@@ -1,0 +1,17 @@
+warning: /Users/mordecai/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/mordecai/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+[0/1] Planning build
+Building for debugging...
+[0/9] Write sources
+[2/9] Write swift-version--1AB21518FC5DEDBE.txt
+[4/12] Emitting module TableBench
+[5/12] Compiling TableBench main.swift
+[5/13] Write Objects.LinkFileList
+[6/13] Linking TableBench
+[7/13] Applying TableBench
+[9/13] Compiling Tableview main.swift
+[10/13] Emitting module Tableview
+[10/13] Write Objects.LinkFileList
+[11/13] Linking Tableview
+[12/13] Applying Tableview
+Build complete! (0.75s)

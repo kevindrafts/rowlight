@@ -1,0 +1,17 @@
+{
+  "bytes" : 100000000,
+  "cacheAccountedBytes" : 26900,
+  "cacheRows" : 50,
+  "columns" : 10,
+  "file" : "100MB.csv",
+  "firstCell" : "column000",
+  "firstPreviewSeconds" : 0.18369587499182671,
+  "indexSeconds" : 0.17206858342979103,
+  "peakRSSBytes" : 149962752,
+  "previewDecodeSeconds" : 5.4624979384243488e-05,
+  "previewRows" : 50,
+  "readSeconds" : 0.011572666582651436,
+  "records" : 1000000,
+  "sourceSHA256After" : "2f3a72135973611f29ad95dc0344eff45aafceb7b65a2a647117ff5eaaf6e4d3",
+  "sourceSHA256Before" : "2f3a72135973611f29ad95dc0344eff45aafceb7b65a2a647117ff5eaaf6e4d3"
+}

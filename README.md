@@ -2,6 +2,8 @@
 
 Preview **0.1.1** (build 2). A native, read-only CSV viewer for Apple Silicon Macs (macOS 13+). Milestone 1 implements CSV; XLSX, editing, and AI are not implemented.
 
+The welcome screen offers **Open File…**, drag-and-drop guidance, and the **⌘O** shortcut. The file heading shows dimensions and size. Columns start at widths sampled from up to 24 records; choose Comfortable or Compact row density. **Import Options** contains header, delimiter, and monospaced-text controls. The value inspector starts compact; use **Expand** or Space from the grid to toggle its larger view. Find supports standard text cut/copy/paste shortcuts. See the [latest desktop check](docs/evidence/desktop-check-2026-09-21.md) for verified interactions and remaining QA scope.
+
 Build and check with the installed Swift Command Line Tools:
 
 ```sh

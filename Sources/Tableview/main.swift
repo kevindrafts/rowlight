@@ -15,6 +15,17 @@ final class FileDropView: NSView {
     }
 }
 
+@MainActor
+final class PaddedTextCell: NSTextFieldCell {
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        var result = super.drawingRect(forBounds: rect.insetBy(dx: 7, dy: 0))
+        let height = min(result.height, cellSize.height)
+        result.origin.y += (result.height - height) / 2
+        result.size.height = height
+        return result
+    }
+}
+
 /// A reusable cell owns its selection drawing; NSTableRowView never draws selection.
 @MainActor
 final class GridCell: NSTextField {
@@ -78,7 +89,10 @@ final class RowNumberRuler: NSRulerView {
         dataBounds.size.height -= insets.top + insets.bottom
         let viewport = convert(dataBounds, from: scrollView.contentView)
         NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: viewport.intersection(bounds)).addClip()
+        // The ruler follows vertical scrolling only; horizontal content offsets
+        // must never clip its labels away.
+        let visibleBand = NSRect(x: bounds.minX, y: viewport.minY, width: bounds.width, height: viewport.height)
+        NSBezierPath(rect: visibleBand.intersection(bounds)).addClip()
         let visible = table.rows(in: table.visibleRect)
         if visible.location != NSNotFound {
             let attributes: [NSAttributedString.Key: Any] = [
@@ -111,6 +125,15 @@ final class RowNumberRuler: NSRulerView {
 @MainActor
 final class CSVTable: NSTableView {
     weak var owner: ViewerWindow?
+    override func drawBackground(inClipRect clipRect: NSRect) {
+        backgroundColor.setFill(); clipRect.fill()
+        guard numberOfRows > 0 else { return }
+        let populated = NSRect(x: 0, y: 0, width: bounds.width, height: rect(ofRow: numberOfRows - 1).maxY)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: populated).addClip()
+        super.drawBackground(inClipRect: clipRect.intersection(populated))
+        NSGraphicsContext.restoreGraphicsState()
+    }
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let row = row(at: point), column = column(at: point)
@@ -125,6 +148,7 @@ final class CSVTable: NSTableView {
         case 125: owner?.move(rows: 1, columns: 0)
         case 126: owner?.move(rows: -1, columns: 0)
         case 48: owner?.move(rows: 0, columns: event.modifierFlags.contains(.shift) ? -1 : 1)
+        case 49: owner?.toggleInspector(nil)
         case 53: owner?.cancelWork(nil)
         default: super.keyDown(with: event)
         }
@@ -151,6 +175,16 @@ final class CSVTable: NSTableView {
 final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSSearchFieldDelegate {
     private let table = CSVTable()
     private let scroll = NSScrollView()
+    private let welcome = NSStackView()
+    private let documentName = NSTextField(labelWithString: "Tableview")
+    private let documentDetail = NSTextField(labelWithString: "A clear view of your data")
+    private let inspectorToggle = NSButton(title: "Expand ↗", target: nil, action: nil)
+    private var inspectorHeight: NSLayoutConstraint!
+    private var inspectorExpanded = false
+    private let importPopover = NSPopover()
+    private let density = NSPopUpButton()
+    private let mono = NSButton(checkboxWithTitle: "Monospaced text", target: nil, action: nil)
+    private let inspectorScroll = NSScrollView()
     private var gutter: RowNumberRuler!
     private let inspectorLabel = NSTextField(labelWithString: "No cell selected")
     private let status = NSTextField(labelWithString: "Open or drop a CSV file to begin.")
@@ -170,7 +204,9 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
         window.title = "Tableview — Read Only"
-        window.minSize = NSSize(width: 850, height: 430)
+        window.minSize = NSSize(width: 850, height: 480)
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .windowBackgroundColor
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("CSVViewer")
@@ -180,27 +216,45 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         header.state = .on; header.target = self; header.action = #selector(optionsChanged(_:))
         delimiter.addItems(withTitles: ["Auto delimiter", "Comma", "Semicolon", "Tab", "Pipe"])
         delimiter.target = self; delimiter.action = #selector(optionsChanged(_:))
-        search.placeholderString = "Find literal text"; search.delegate = self
+        search.placeholderString = "Search this file   ⌘F"; search.delegate = self
         search.target = self; search.action = #selector(findNext(_:))
         search.sendsSearchStringImmediately = false
         search.sendsWholeSearchString = true
-        let next = NSButton(title: "Find Next", target: self, action: #selector(findNext(_:)))
-        cancel.target = self; cancel.action = #selector(cancelWork(_:)); cancel.isEnabled = false
+        let next = NSButton(title: "Next", target: self, action: #selector(findNext(_:)))
+        cancel.target = self; cancel.action = #selector(cancelWork(_:)); cancel.isEnabled = false; cancel.isHidden = true
         let brand = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Tableview")!)
         brand.contentTintColor = .systemTeal
         open.bezelStyle = .rounded; next.bezelStyle = .rounded; cancel.bezelStyle = .rounded
-        let bar = NSStackView(views: [brand, open, header, delimiter, search, next, cancel])
+        let options = NSButton(title: "Import Options", target: self, action: #selector(showImportOptions(_:)))
+        options.bezelStyle = .rounded
+        density.addItems(withTitles: ["Comfortable", "Compact"])
+        density.target = self; density.action = #selector(changeDensity(_:))
+        density.setAccessibilityLabel("Row density")
+        mono.target = self; mono.action = #selector(changeTypography(_:))
+        let optionsTitle = NSTextField(labelWithString: "File interpretation")
+        optionsTitle.font = .systemFont(ofSize: 14, weight: .semibold)
+        let optionsHint = NSTextField(labelWithString: "Values are always preserved as written.")
+        optionsHint.font = .systemFont(ofSize: 11); optionsHint.textColor = .secondaryLabelColor
+        let optionsStack = NSStackView(views: [optionsTitle, header, delimiter, mono, optionsHint])
+        optionsStack.orientation = .vertical; optionsStack.alignment = .leading; optionsStack.spacing = 16
+        optionsStack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        let optionsController = NSViewController(); optionsController.view = optionsStack
+        importPopover.contentViewController = optionsController; importPopover.behavior = .transient
+        let spacer = NSView(); spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let bar = NSStackView(views: [open, options, density, spacer, search, next, cancel])
         bar.orientation = .horizontal; bar.spacing = 10
-        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = false
-        scroll.borderType = .lineBorder
+        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        scroll.wantsLayer = true; scroll.layer?.cornerRadius = 8
+        scroll.layer?.masksToBounds = true
         table.owner = self; table.dataSource = self; table.delegate = self
         table.usesAlternatingRowBackgroundColors = true
         table.selectionHighlightStyle = .none
         table.focusRingType = .none
-        table.gridColor = .separatorColor
+        table.gridColor = .separatorColor.withAlphaComponent(0.35)
         table.setAccessibilityLabel("CSV data grid")
-        table.rowHeight = 25; table.intercellSpacing = NSSize(width: 1, height: 1)
-        table.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
+        table.rowHeight = 32; table.intercellSpacing = NSSize(width: 1, height: 1)
+        table.gridStyleMask = []
         table.columnAutoresizingStyle = .noColumnAutoresizing
         table.allowsColumnReordering = false; table.allowsMultipleSelection = false
         table.registerForDraggedTypes([.fileURL])
@@ -211,8 +265,8 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         scroll.hasVerticalRuler = true; scroll.hasHorizontalRuler = false; scroll.rulersVisible = true
         inspectorLabel.font = .systemFont(ofSize: 12, weight: .medium)
         inspectorLabel.textColor = .secondaryLabelColor
-        let inspectorScroll = NSScrollView()
-        inspectorScroll.hasVerticalScroller = true; inspectorScroll.borderType = .lineBorder
+        inspectorScroll.hasVerticalScroller = true; inspectorScroll.borderType = .noBorder
+        inspectorScroll.wantsLayer = true; inspectorScroll.layer?.cornerRadius = 6
         inspector.isEditable = false; inspector.isSelectable = true; inspector.isRichText = false
         inspector.textColor = .textColor; inspector.backgroundColor = .textBackgroundColor
         inspector.setAccessibilityLabel("Selected cell full literal value")
@@ -223,21 +277,81 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         inspectorScroll.documentView = inspector
         status.font = .systemFont(ofSize: 11); status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingMiddle
-        for view in [bar, scroll, inspectorLabel, inspectorScroll, status] {
+        documentName.font = .systemFont(ofSize: 21, weight: .semibold)
+        documentName.lineBreakMode = .byTruncatingMiddle
+        documentDetail.font = .systemFont(ofSize: 12); documentDetail.textColor = .secondaryLabelColor
+        let identity = NSStackView(views: [documentName, documentDetail])
+        identity.orientation = .vertical; identity.alignment = .leading; identity.spacing = 5
+        let badge = NSTextField(labelWithString: "READ ONLY")
+        badge.font = .systemFont(ofSize: 10, weight: .semibold); badge.textColor = .secondaryLabelColor
+        let heading = NSStackView(views: [brand, identity, badge]); heading.spacing = 12
+        brand.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 25, weight: .regular)
+        inspectorToggle.bezelStyle = .rounded; inspectorToggle.controlSize = .small
+        inspectorToggle.target = self; inspectorToggle.action = #selector(toggleInspector(_:))
+        inspectorToggle.toolTip = "Expand or collapse the full value. Space from the grid."
+        inspectorHeight = inspectorScroll.heightAnchor.constraint(equalToConstant: 36)
+        for view in [heading, bar, scroll, inspectorLabel, inspectorScroll, inspectorToggle, status] {
             view.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            bar.topAnchor.constraint(equalTo: root.topAnchor, constant: 12), bar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            search.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
-            scroll.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 10), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12), scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            inspectorLabel.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8), inspectorLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            inspectorScroll.topAnchor.constraint(equalTo: inspectorLabel.bottomAnchor, constant: 4), inspectorScroll.leadingAnchor.constraint(equalTo: scroll.leadingAnchor), inspectorScroll.trailingAnchor.constraint(equalTo: scroll.trailingAnchor), inspectorScroll.heightAnchor.constraint(equalToConstant: 115),
+            heading.topAnchor.constraint(equalTo: root.topAnchor, constant: 18), heading.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 22), heading.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -22),
+            bar.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 20), bar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
+            search.widthAnchor.constraint(equalToConstant: 245),
+            scroll.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 16), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20), scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
+            inspectorLabel.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 14), inspectorLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            inspectorScroll.topAnchor.constraint(equalTo: inspectorLabel.bottomAnchor, constant: 9), inspectorScroll.leadingAnchor.constraint(equalTo: scroll.leadingAnchor), inspectorScroll.trailingAnchor.constraint(equalTo: scroll.trailingAnchor), inspectorHeight,
+            inspectorToggle.centerYAnchor.constraint(equalTo: inspectorLabel.centerYAnchor), inspectorToggle.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
+            inspectorLabel.trailingAnchor.constraint(lessThanOrEqualTo: inspectorToggle.leadingAnchor, constant: -12),
             status.topAnchor.constraint(equalTo: inspectorScroll.bottomAnchor, constant: 8), status.leadingAnchor.constraint(equalTo: scroll.leadingAnchor), status.trailingAnchor.constraint(equalTo: scroll.trailingAnchor), status.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10)
         ])
+        let welcomeIcon = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Tableview")!)
+        welcomeIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
+        welcomeIcon.contentTintColor = .systemTeal
+        let welcomeTitle = NSTextField(labelWithString: "A clear view of your data")
+        welcomeTitle.font = .systemFont(ofSize: 24, weight: .semibold)
+        let welcomeDetail = NSTextField(labelWithString: "Drop a CSV or TSV file here to get started.")
+        welcomeDetail.textColor = .secondaryLabelColor
+        let welcomeOpen = NSButton(title: "Open File…", target: NSApp.delegate, action: #selector(AppDelegate.openDocument(_:)))
+        welcomeOpen.bezelStyle = .rounded
+        let welcomeHint = NSTextField(labelWithString: "⌘O to open · Read only · Your original file stays unchanged")
+        welcomeHint.font = .systemFont(ofSize: 11)
+        welcomeHint.textColor = .secondaryLabelColor
+        welcome.orientation = .vertical; welcome.alignment = .centerX; welcome.spacing = 14
+        for view in [welcomeIcon, welcomeTitle, welcomeDetail, welcomeOpen, welcomeHint] { welcome.addArrangedSubview(view) }
+        welcome.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(welcome)
+        NSLayoutConstraint.activate([
+            welcome.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            welcome.centerYAnchor.constraint(equalTo: root.centerYAnchor),
+            welcome.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 24),
+            welcome.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -24)
+        ])
+        showWelcome(true)
+        window.initialFirstResponder = welcomeOpen
         if let url { load(url) }
     }
     required init?(coder: NSCoder) { fatalError("Not used") }
 
+    private func showWelcome(_ visible: Bool) {
+        welcome.isHidden = !visible
+        for view in [scroll, inspectorLabel, inspectorScroll, inspectorToggle] { view.isHidden = visible }
+    }
+
+    @objc func showImportOptions(_ sender: NSButton) {
+        importPopover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
+    }
+    @objc func changeDensity(_ sender: Any?) {
+        table.rowHeight = density.indexOfSelectedItem == 1 ? 23 : 32
+        table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<table.numberOfRows))
+        gutter.needsDisplay = true
+    }
+    @objc func changeTypography(_ sender: Any?) { table.reloadData() }
+    @objc func toggleInspector(_ sender: Any?) {
+        inspectorExpanded.toggle()
+        inspectorHeight.constant = inspectorExpanded ? 150 : 36
+        inspectorToggle.title = inspectorExpanded ? "Collapse ↙" : "Expand ↗"
+        window?.contentView?.layoutSubtreeIfNeeded()
+        gutter.needsDisplay = true
+    }
     func runUISelfChecks() throws {
         func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
             guard condition() else {
@@ -246,12 +360,23 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         }
         try check(table.selectionHighlightStyle == .none, "Whole-row selection must be disabled")
         try check(table.numberOfRows == 0 && inspector.string.isEmpty, "Empty window selection")
+        try check(!welcome.isHidden && scroll.isHidden, "Welcome hides unused grid")
+        toggleInspector(nil)
+        try check(inspectorHeight.constant == 150, "Inspector expands")
+        toggleInspector(nil)
+        try check(inspectorHeight.constant == 36, "Inspector returns to compact height")
         let records = (0..<120).map { row in (0..<16).map { "r\(row)c\($0)" }.joined(separator: ",") }.joined(separator: "\n")
         let document = try CSVDocument(data: Data(records.utf8))
         model = GridModel(document: document); cache = RowCache(document: document)
         rebuildColumns()
         window?.contentView?.layoutSubtreeIfNeeded(); scroll.tile(); table.layoutSubtreeIfNeeded()
         try check(table.numberOfColumns == 16 && table.numberOfRows == 119, "Gutter must not be a data column")
+        try check(welcome.isHidden && !scroll.isHidden, "Loaded grid replaces welcome")
+        try check(table.tableColumns.allSatisfy { (110...360).contains($0.width) }, "Initial column widths bounded")
+        density.selectItem(at: 1); changeDensity(nil)
+        try check(table.rowHeight == 23, "Compact density")
+        density.selectItem(at: 0); changeDensity(nil)
+        try check(table.rowHeight == 32, "Comfortable density")
         try check(scroll.verticalRulerView === gutter && scroll.rulersVisible, "Fixed ruler installed")
         select(row: 0, column: 0)
         let first = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as! GridCell
@@ -300,10 +425,12 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
 
     func load(_ url: URL) {
         self.url = url; sourceTitle = url.lastPathComponent
+        documentName.stringValue = sourceTitle
+        documentDetail.stringValue = "Reading your file…"
         searchGate.cancel()
         let ticket = loadGate.begin(), gate = loadGate
         let separator: UInt8? = [nil, 44, 59, 9, 124][delimiter.indexOfSelectedItem]
-        loading = true; cancel.isEnabled = true
+        loading = true; cancel.isEnabled = true; cancel.isHidden = false
         model = nil; cache = nil; inspector.string = ""; rebuildColumns()
         window?.title = "\(sourceTitle) — Loading…"
         status.stringValue = "Reading and indexing \(sourceTitle)…"
@@ -315,7 +442,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
                 }
             }.value
             guard let self, gate.isCurrent(ticket) else { return }
-            self.loading = false; self.cancel.isEnabled = false
+            self.loading = false; self.cancel.isEnabled = false; self.cancel.isHidden = true
             switch result {
             case .success(let document):
                 var model = GridModel(document: document); model.hasHeader = self.header.state == .on
@@ -326,6 +453,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
                 if model.rowCount > 0 { self.select(row: 0, column: 0) }
             case .failure(let error):
                 self.window?.title = "\(self.sourceTitle) — Could Not Open"
+                self.documentDetail.stringValue = "Could not open this file"
                 self.status.stringValue = String(describing: error)
                 self.inspector.string = String(describing: error)
             }
@@ -333,17 +461,24 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
 
     private func rebuildColumns() {
+        showWelcome(model == nil && url == nil)
         table.deselectAll(nil)
         for column in table.tableColumns { table.removeTableColumn(column) }
         if let model {
             // Decode the header once, even for very wide files.
             let titles = model.hasHeader && model.document.rowCount > 0 ? (try? model.document.row(0)) ?? [] : []
+            // Bound width sampling independently of file size and column count.
+            let samples = (0..<min(model.rowCount, 24)).compactMap { try? model.document.row(model.sourceRow($0)) }
             for i in 0..<model.document.columnCount {
                 let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(String(i)))
                 let title = titles.indices.contains(i) && !titles[i].isEmpty ? titles[i] : "Column \(i + 1)"
                 column.title = String(title.prefix(200)).replacingOccurrences(of: "\n", with: " ⏎ ")
                 column.headerToolTip = title
-                column.width = 160; column.minWidth = 45; column.maxWidth = 1800
+                let lengths = samples.map { $0.indices.contains(i) ? $0[i].prefix(48).count : 0 }
+                let characters = max(title.prefix(48).count, lengths.max() ?? 0)
+                column.width = CGFloat(min(360, max(110, characters * 7 + 30)))
+                column.minWidth = 65; column.maxWidth = 1800
+                column.headerCell.font = .systemFont(ofSize: 12, weight: .semibold)
                 column.resizingMask = .userResizingMask
                 table.addTableColumn(column)
             }
@@ -355,6 +490,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
     private func showDimensions() {
         guard let model else { return }
+        documentDetail.stringValue = "\(model.rowCount.formatted()) rows  ·  \(model.document.columnCount) columns  ·  \(ByteCountFormatter.string(fromByteCount: Int64(model.document.byteCount), countStyle: .file))"
         status.stringValue = "\(model.rowCount.formatted()) data rows × \(model.document.columnCount) columns · \(model.document.byteCount.formatted()) bytes · delimiter \(model.document.delimiter == 9 ? "Tab" : String(UnicodeScalar(model.document.delimiter))) · Read Only"
     }
     func numberOfRows(in tableView: NSTableView) -> Int { model?.rowCount ?? 0 }
@@ -362,7 +498,12 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         guard let model, let tableColumn, let column = Int(tableColumn.identifier.rawValue) else { return nil }
         let id = NSUserInterfaceItemIdentifier("Cell")
         let field = (tableView.makeView(withIdentifier: id, owner: self) as? GridCell) ?? GridCell(labelWithString: "")
-        field.identifier = id; field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        if !(field.cell is PaddedTextCell) {
+            let cell = PaddedTextCell(textCell: "")
+            cell.isEditable = false; cell.isSelectable = false; cell.isBordered = false
+            field.cell = cell
+        }
+        field.identifier = id; field.font = mono.state == .on ? .monospacedSystemFont(ofSize: 13, weight: .regular) : .systemFont(ofSize: 13)
         field.lineBreakMode = .byTruncatingTail; field.maximumNumberOfLines = 1
         do {
             let values = try cache?.row(model.sourceRow(row)) ?? []
@@ -407,7 +548,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         refreshCells(model?.selectionChanges(from: old) ?? [])
         guard let selected = model?.selection else { clearSelection(); return }
         table.scrollRowToVisible(selected.row); table.scrollColumnToVisible(selected.column)
-        inspectorLabel.stringValue = "Row \(selected.row + 1) · Column \(selected.column + 1) — full literal value (⌘C from grid)"
+        inspectorLabel.stringValue = "Row \(selected.row + 1) · Column \(selected.column + 1) ·  ⌘C to copy  ·  Space to expand"
         do { inspector.string = try model?.value() ?? "" }
         catch { status.stringValue = String(describing: error) }
     }
@@ -425,7 +566,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     }
     @objc func focusFind(_ sender: Any?) { window?.makeFirstResponder(search) }
     func controlTextDidChange(_ obj: Notification) {
-        searchGate.cancel(); cancel.isEnabled = loading
+        searchGate.cancel(); cancel.isEnabled = loading; cancel.isHidden = !loading
         if !loading { showDimensions() }
     }
     @objc func findNext(_ sender: Any?) {
@@ -434,13 +575,13 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         let after = model.selection.map { Cell(row: model.sourceRow($0.row), column: $0.column) }
         let firstRow = model.hasHeader ? 1 : 0
         let gate = searchGate, ticket = gate.begin()
-        status.stringValue = "Finding \(query)…"; cancel.isEnabled = true
+        status.stringValue = "Finding \(query)…"; cancel.isEnabled = true; cancel.isHidden = false
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) { () -> Result<Cell?, Error> in
                 Result { try document.find(query, after: after, firstRow: firstRow, cancelled: { !gate.isCurrent(ticket) }) }
             }.value
             guard let self, gate.isCurrent(ticket) else { return }
-            self.cancel.isEnabled = false
+            self.cancel.isEnabled = false; self.cancel.isHidden = true
             switch result {
             case .success(let cell):
                 if let cell { self.select(row: cell.row - firstRow, column: cell.column); self.status.stringValue = "Found at record \(cell.row + 1), column \(cell.column + 1). Find Next wraps at the end." }
@@ -456,13 +597,13 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         } else {
             model?.hasHeader = header.state == .on
             rebuildColumns(); inspector.string = ""; showDimensions()
-            cancel.isEnabled = loading
+            cancel.isEnabled = loading; cancel.isHidden = !loading
         }
     }
     @objc func cancelWork(_ sender: Any?) {
         let wasLoading = loading
-        loadGate.cancel(); searchGate.cancel(); loading = false; cancel.isEnabled = false
-        if wasLoading { window?.title = "\(sourceTitle) — Cancelled" }
+        loadGate.cancel(); searchGate.cancel(); loading = false; cancel.isEnabled = false; cancel.isHidden = true
+        if wasLoading { window?.title = "\(sourceTitle) — Cancelled"; documentDetail.stringValue = "Loading cancelled" }
         status.stringValue = wasLoading ? "Load cancelled. Change delimiter or reopen the file to try again." : "Search cancelled."
     }
     func windowWillClose(_ notification: Notification) {
@@ -513,7 +654,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = file.addItem(withTitle: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "o"); open.target = self
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         let edit = submenu("Edit")
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         let find = edit.addItem(withTitle: "Find…", action: #selector(self.find(_:)), keyEquivalent: "f"); find.target = self
         let next = edit.addItem(withTitle: "Find Next", action: #selector(findNext(_:)), keyEquivalent: "g"); next.target = self

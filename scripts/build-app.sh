@@ -2,20 +2,20 @@
 set -eu
 cd "$(dirname "$0")/.."
 scripts/swift-local.sh build -c release --arch arm64
-bundle="dist/Tableview.app"
+bundle="dist/Rowlight.app"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
-cp .build/arm64-apple-macosx/release/Tableview "$bundle/Contents/MacOS/Tableview"
+cp .build/arm64-apple-macosx/release/Rowlight "$bundle/Contents/MacOS/Rowlight"
 cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>local.tableview.csv</string>
-<key>CFBundleName</key><string>Tableview</string>
-<key>CFBundleDisplayName</key><string>Tableview</string>
-<key>CFBundleExecutable</key><string>Tableview</string>
+<key>CFBundleIdentifier</key><string>local.rowlight.csv</string>
+<key>CFBundleName</key><string>Rowlight</string>
+<key>CFBundleDisplayName</key><string>Rowlight</string>
+<key>CFBundleExecutable</key><string>Rowlight</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.1</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleShortVersionString</key><string>0.2.0</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>CFBundleDocumentTypes</key><array><dict>

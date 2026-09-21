@@ -1,7 +1,7 @@
-warning: /Users/mordecai/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
-warning: /Users/mordecai/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: <HOME>/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: <HOME>/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
 Building for debugging...
-[0/17] /Users/mordecai/projects/tableview/.build/arm64-apple-macosx/debug/TableviewPackageTests.derived/runner.swift
+[0/17] <HOME>/projects/tableview/.build/arm64-apple-macosx/debug/TableviewPackageTests.derived/runner.swift
 [1/17] Write sources
 [3/17] Write Tableview-entitlement.plist
 [4/17] Write TableBench-entitlement.plist
@@ -11,7 +11,7 @@ Building for debugging...
 [11/19] Emitting module TableCore
 error: emit-module command failed with exit code 1 (use -v to see invocation)
 [12/25] Emitting module TableCoreTests
-/Users/mordecai/projects/tableview/Tests/TableCoreTests/CSVTests.swift:1:8: error: no such module 'XCTest'
+<HOME>/projects/tableview/Tests/TableCoreTests/CSVTests.swift:1:8: error: no such module 'XCTest'
  1 | import XCTest
    |        `- error: no such module 'XCTest'
  2 | import Foundation
@@ -19,7 +19,7 @@ error: emit-module command failed with exit code 1 (use -v to see invocation)
 [13/25] Emitting module TableBench
 [14/25] Compiling TableBench main.swift
 [15/25] Compiling TableCoreTests CSVTests.swift
-/Users/mordecai/projects/tableview/Tests/TableCoreTests/CSVTests.swift:1:8: error: no such module 'XCTest'
+<HOME>/projects/tableview/Tests/TableCoreTests/CSVTests.swift:1:8: error: no such module 'XCTest'
  1 | import XCTest
    |        `- error: no such module 'XCTest'
  2 | import Foundation

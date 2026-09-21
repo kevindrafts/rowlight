@@ -176,7 +176,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private let table = CSVTable()
     private let scroll = NSScrollView()
     private let welcome = NSStackView()
-    private let documentName = NSTextField(labelWithString: "Tableview")
+    private let documentName = NSTextField(labelWithString: "Rowlight")
     private let documentDetail = NSTextField(labelWithString: "A clear view of your data")
     private let inspectorToggle = NSButton(title: "Expand ↗", target: nil, action: nil)
     private var inspectorHeight: NSLayoutConstraint!
@@ -198,12 +198,12 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     private var cache: RowCache?
     private var url: URL?
     private var loading = false
-    private var sourceTitle = "Tableview"
+    private var sourceTitle = "Rowlight"
 
     init(url: URL? = nil) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
-        window.title = "Tableview — Read Only"
+        window.title = "Rowlight — Read Only"
         window.minSize = NSSize(width: 850, height: 480)
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .windowBackgroundColor
@@ -222,7 +222,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
         search.sendsWholeSearchString = true
         let next = NSButton(title: "Next", target: self, action: #selector(findNext(_:)))
         cancel.target = self; cancel.action = #selector(cancelWork(_:)); cancel.isEnabled = false; cancel.isHidden = true
-        let brand = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Tableview")!)
+        let brand = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Rowlight")!)
         brand.contentTintColor = .systemTeal
         open.bezelStyle = .rounded; next.bezelStyle = .rounded; cancel.bezelStyle = .rounded
         let options = NSButton(title: "Import Options", target: self, action: #selector(showImportOptions(_:)))
@@ -304,7 +304,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
             inspectorLabel.trailingAnchor.constraint(lessThanOrEqualTo: inspectorToggle.leadingAnchor, constant: -12),
             status.topAnchor.constraint(equalTo: inspectorScroll.bottomAnchor, constant: 8), status.leadingAnchor.constraint(equalTo: scroll.leadingAnchor), status.trailingAnchor.constraint(equalTo: scroll.trailingAnchor), status.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10)
         ])
-        let welcomeIcon = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Tableview")!)
+        let welcomeIcon = NSImageView(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Rowlight")!)
         welcomeIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 44, weight: .light)
         welcomeIcon.contentTintColor = .systemTeal
         let welcomeTitle = NSTextField(labelWithString: "A clear view of your data")
@@ -355,7 +355,7 @@ final class ViewerWindow: NSWindowController, NSTableViewDataSource, NSTableView
     func runUISelfChecks() throws {
         func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
             guard condition() else {
-                throw NSError(domain: "Tableview.UI", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+                throw NSError(domain: "Rowlight.UI", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
             }
         }
         try check(table.selectionHighlightStyle == .none, "Whole-row selection must be disabled")
@@ -646,10 +646,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSMenuItem(); menu.addItem(item)
             let child = NSMenu(title: title); item.submenu = child; return child
         }
-        let app = submenu("Tableview")
-        app.addItem(withTitle: "About Tableview", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let app = submenu("Rowlight")
+        app.addItem(withTitle: "About Rowlight", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         app.addItem(.separator())
-        app.addItem(withTitle: "Quit Tableview", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.addItem(withTitle: "Quit Rowlight", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let file = submenu("File")
         let open = file.addItem(withTitle: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "o"); open.target = self
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

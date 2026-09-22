@@ -10,10 +10,16 @@ assert p['CFBundleExecutable'] == 'Rowlight'
 assert p['CFBundleName'] == 'Rowlight'
 assert p['CFBundleDisplayName'] == 'Rowlight'
 assert p['CFBundleIdentifier'] == 'com.halyardco.rowlight'
-assert p['CFBundleShortVersionString'] == '0.2.0'
-assert p['CFBundleVersion'] == '3'
+assert p['CFBundleShortVersionString'] == '0.2.1'
+assert p['CFBundleVersion'] == '4'
 assert p['CFBundlePackageType'] == 'APPL'
 assert p['LSMinimumSystemVersion'] == '13.0'
+assert p['CFBundleIconFile'] == 'Rowlight.icns'
+with open(root + '/Resources/Rowlight.icns', 'rb') as f:
+    icon = f.read()
+assert icon[:4] == b'icns' and int.from_bytes(icon[4:8], 'big') == len(icon)
+with open('assets/Rowlight.icns', 'rb') as f:
+    assert icon == f.read()
 doc = p['CFBundleDocumentTypes'][0]
 assert doc['CFBundleTypeRole'] == 'Viewer'
 assert doc['LSHandlerRank'] == 'Alternate'
@@ -22,5 +28,5 @@ exe = root + '/MacOS/Rowlight'
 assert os.access(exe, os.X_OK)
 assert subprocess.check_output(['lipo', '-archs', exe], text=True).strip() == 'arm64'
 subprocess.run(['codesign', '--verify', '--deep', '--strict', 'dist/Rowlight.app'], check=True)
-print('PASS bundle metadata, CSV Viewer registration, arm64 executable, signature')
+print('PASS bundle metadata, bundled icon, CSV Viewer registration, arm64 executable, signature')
 PY

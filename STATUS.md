@@ -1,10 +1,10 @@
 # Rowlight status
 
-Preview **0.2.0 (build 3)**. Formerly Tableview. Native, read-only CSV/TSV viewer for Apple Silicon and macOS 13+.
+Preview **0.2.1 (build 4)**. Formerly Tableview. Native, read-only CSV/TSV viewer for Apple Silicon and macOS 13+.
 
 The app, Swift executable target, menus, accessibility labels, build scripts, and current README use Rowlight. Historical evidence and GitHub preview releases retain their original names. The canonical repository is `kevindrafts/rowlight`.
 
-Local artifact: `dist/Rowlight.app`. It is ad-hoc signed, not Developer ID signed or notarized. The permanent bundle identifier is `com.halyardco.rowlight`. Version 0.2.0, build 3, is prepared for the `v0.2.0` tag. Relic handles Developer ID signing under Lucas Olson, notarization, stapling, and DMG packaging; see [release handoff](docs/release-handoff-v0.2.0.md).
+Local artifact: `dist/Rowlight.app`. It is ad-hoc signed, not Developer ID signed or notarized. The permanent bundle identifier is `com.halyardco.rowlight`. Version 0.2.1, build 4, is prepared for the `v0.2.1` tag. Relic handles Developer ID signing under Lucas Olson, notarization, stapling, and DMG packaging; see [release handoff](docs/release-handoff-v0.2.1.md).
 
 The native layout includes a file heading, import options popover, bounded content-aware column widths, comfortable/compact density, system or monospaced text, exact-cell selection, pinned row numbers, literal search/copy, and compact/expanded value inspection. The welcome screen and app menus were verified on the desktop after renaming.
 
@@ -16,4 +16,4 @@ See [open-source readiness audit](docs/open-source-audit.md) and [desktop QA](do
 
 The MIT-licensed source is public at https://github.com/kevindrafts/rowlight following explicit maintainer approval to publish the retained history, legacy previews, historical machine paths, and author metadata. No credentials were detected in the audit. GitHub secret scanning, push protection, and private vulnerability reporting are enabled.
 
-The source-only `v0.2.0-preview.1` release introduces Rowlight; official Developer ID-signed and notarized downloads remain pending the LLC signing setup. CI remains a template pending a token with workflow permission (or installation through GitHub's web editor).
+The source-only `v0.2.0-preview.1` release introduces Rowlight; Relic delivered the signed and notarized v0.2.0 DMG, and the user confirmed its install test. Version 0.2.1 adds the bundled app icon and needs its own signed artifact and install test before publication. CI remains a template pending a token with workflow permission (or installation through GitHub's web editor).

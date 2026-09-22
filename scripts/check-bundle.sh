@@ -9,7 +9,7 @@ with open(root + '/Info.plist', 'rb') as f:
 assert p['CFBundleExecutable'] == 'Rowlight'
 assert p['CFBundleName'] == 'Rowlight'
 assert p['CFBundleDisplayName'] == 'Rowlight'
-assert p['CFBundleIdentifier'] == 'local.rowlight.csv'
+assert p['CFBundleIdentifier'] == 'com.halyardco.rowlight'
 assert p['CFBundleShortVersionString'] == '0.2.0'
 assert p['CFBundleVersion'] == '3'
 assert p['CFBundlePackageType'] == 'APPL'
@@ -20,7 +20,7 @@ assert doc['LSHandlerRank'] == 'Alternate'
 assert 'public.comma-separated-values-text' in doc['LSItemContentTypes']
 exe = root + '/MacOS/Rowlight'
 assert os.access(exe, os.X_OK)
-assert 'arm64' in subprocess.check_output(['file', exe], text=True)
+assert subprocess.check_output(['lipo', '-archs', exe], text=True).strip() == 'arm64'
 subprocess.run(['codesign', '--verify', '--deep', '--strict', 'dist/Rowlight.app'], check=True)
 print('PASS bundle metadata, CSV Viewer registration, arm64 executable, signature')
 PY

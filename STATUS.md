@@ -4,7 +4,7 @@ Preview **0.2.0 (build 3)**. Formerly Tableview. Native, read-only CSV/TSV viewe
 
 The app, Swift executable target, menus, accessibility labels, build scripts, and current README use Rowlight. Historical evidence and GitHub preview releases retain their original names. The canonical repository is `kevindrafts/rowlight`.
 
-Local artifact: `dist/Rowlight.app`. It is ad-hoc signed, not Developer ID signed or notarized. `local.rowlight.csv` is a development bundle identifier; choose the permanent identifier with the LLC's signing setup before distributing a signed release.
+Local artifact: `dist/Rowlight.app`. It is ad-hoc signed, not Developer ID signed or notarized. The permanent bundle identifier is `com.halyardco.rowlight`. Version 0.2.0, build 3, is prepared for the `v0.2.0` tag. Relic handles Developer ID signing under Lucas Olson, notarization, stapling, and DMG packaging; see [release handoff](docs/release-handoff-v0.2.0.md).
 
 The native layout includes a file heading, import options popover, bounded content-aware column widths, comfortable/compact density, system or monospaced text, exact-cell selection, pinned row numbers, literal search/copy, and compact/expanded value inspection. The welcome screen and app menus were verified on the desktop after renaming.
 

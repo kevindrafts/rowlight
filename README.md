@@ -10,7 +10,7 @@ The welcome screen offers **Open File‚Ä¶**, drag-and-drop guidance, and the **‚å
 
 ## Build from source
 
-This is a source preview. An official Developer ID-signed, notarized Rowlight download is not available yet. Older Tableview release assets are legacy development previews.
+This is a source preview. An official Developer ID-signed, notarized Rowlight download is not available yet. Older Tableview release assets are legacy development previews. The `v0.2.0` signing/packaging handoff is documented in [release handoff](docs/release-handoff-v0.2.0.md); an official signed download is available only after the final artifact is published.
 
 Use Swift 6 or newer with the macOS SDK (Xcode or current Command Line Tools):
 

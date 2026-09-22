@@ -8,9 +8,15 @@ Preview **0.2.1** (build 4). A native, read-only CSV viewer for Apple Silicon Ma
 
 The welcome screen offers **Open File…**, drag-and-drop guidance, and the **⌘O** shortcut. The file heading shows dimensions and size. Columns start at widths sampled from up to 24 records; choose Comfortable or Compact row density. **Import Options** contains header, delimiter, and monospaced-text controls. The value inspector starts compact; use **Expand** or Space from the grid to toggle its larger view. Find supports standard text cut/copy/paste shortcuts. See the [latest desktop check](docs/evidence/desktop-check-2026-09-21.md) for verified interactions and remaining QA scope.
 
+## Download
+
+[**Download Rowlight v0.2.1 for Apple Silicon**](https://github.com/kevindrafts/rowlight/releases/download/v0.2.1/Rowlight-0.2.1-arm64.dmg) · [Release notes and SHA-256 checksum](https://github.com/kevindrafts/rowlight/releases/tag/v0.2.1)
+
+Requires an Apple Silicon (M-series) Mac running macOS 13 or newer. Open the DMG and drag Rowlight into Applications. This preview is Developer ID-signed by Lucas Olson, notarized by Apple, and stapled. Older Tableview release assets are legacy development previews.
+
 ## Build from source
 
-This is a source preview. An official Developer ID-signed, notarized Rowlight download is not available yet. Older Tableview release assets are legacy development previews. The `v0.2.1` signing/packaging handoff is documented in [release handoff](docs/release-handoff-v0.2.1.md); an official signed download is available only after the final artifact is published.
+The signed download above is packaged by Relic; local builds use ad-hoc signing. See the [release handoff](docs/release-handoff-v0.2.1.md) for the distribution workflow.
 
 Use Swift 6 or newer with the macOS SDK (Xcode or current Command Line Tools):
 
